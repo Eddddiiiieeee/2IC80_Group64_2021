@@ -1,0 +1,23 @@
+80211_connection.pcapng
+  Setup of the HS110 plug. The HS110 enables its own WiFi AP to facilitate communications between the App and device. 
+
+awayMode.pcapng
+  Away Mode functionality on the HS110. Away mode randomly turned on and off the device during the specified time.
+
+DNS_Queries.pcap
+  DNS queries made by the HS110 after being plugged in.
+
+energyUsage.pcapng
+  Look at energy usage via the Kasa App.
+
+modifySetting.pcapng
+  View device settings/information and change name of device. At the end, the device was removed from the Kasa App.
+
+onOff.pcapng
+  The device was turned ON then OFF via the Kasa App.
+
+schedule.pcapng
+  Two schedules were added to the device via the Kasa App. They were both deleted at the end.
+
+timer.pcapng
+  The timer setting was enabled via the Kasa App. The timer were cancelled. 
