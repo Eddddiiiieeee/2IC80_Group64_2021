@@ -21,3 +21,7 @@ schedule.pcapng
 
 timer.pcapng
   The timer setting was enabled via the Kasa App. The timer were cancelled. 
+
+standardOperation.pcapng
+  The device was plugged in, turned ON and OFF a few times via the Kasa APP, then unplugged.
+  The Kasa app was located remotely, not on the same LAN.
