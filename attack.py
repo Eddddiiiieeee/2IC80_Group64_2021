@@ -260,7 +260,3 @@ class TP_Link_Attack():
 
     print("\nMaintain attack terminated")
 
-
-# FOR TESTING ONLY
-t = TP_Link_Attack("wlan0")
-
